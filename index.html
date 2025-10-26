@@ -40,31 +40,6 @@
       text-shadow: 0 2px 8px rgba(0,0,0,.45);
     }
 
-  .mic-prompt{
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: clamp(5px, -30vw, 63px);   /* same vertical position as .letter-emoji */
-      text-align: center;
-      padding: 0;                       /* no pill, no padding */
-      background: transparent;          /* no background */
-      border: none;                     /* no border */
-      color: #fff;
-      font-family: "Sora", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      font-weight: 600;
-      font-size: clamp(12px, 2.8vw, 16px);
-      letter-spacing: .2px;
-      text-shadow: 0 2px 8px rgba(0,0,0,.45);  /* subtle glow for readability */
-      z-index: 3;
-      pointer-events: none;             /* won’t block clicks */
-      animation: fadeIn .25s ease-out both;
-  }
-
-.mic-prompt.hide{
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity .22s ease, transform .22s ease;
-}
     /* Instruction under the cake */
     .card-instruction{
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -80,13 +55,12 @@
 
     .letter-emoji{
       position: absolute;
-      left: 0;                /* full width of cake-wrap */
+      left: 0;
       right: 0;
-      bottom: clamp(33px, 9vw, 63px);  
-      /* keep your size line as-is or adjust if you want */
+      bottom: clamp(33px, 9vw, 63px);
       font-size: clamp(48px, 12vw, 80px);
       line-height: 1;
-      text-align: left;       /* we'll absolutely position children */
+      text-align: left;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
@@ -100,20 +74,16 @@
       -webkit-tap-highlight-color: transparent;
       outline: none;
 
-      /* tweakables */
-      --gap: 0.99em;          /* how far the hand sits from the letter (to the right) */
-      --hand-scale: 0.85;     /* size of the hand relative to the letter */
+      --gap: 0.99em;
+      --hand-scale: 0.85;
     }
 
-    /* letter: perfectly centered under cake */
     .emoji-letter{
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
       line-height: 1;
     }
-
-    /* hand: to the RIGHT of the letter, pointing back at it */
     .emoji-hand{
       position: absolute;
       left: calc(50% + var(--gap));
@@ -140,8 +110,8 @@
       display:block; margin:0 auto; width:100%; max-width:min(400px,80vw);
       height:auto; cursor:pointer; transition: transform .2s ease;
     }
-
     .birthday-image:active{ transform: scale(0.98); }
+
     .footer{ opacity:.8; font-size:12px; margin-top:10px }
 
     @keyframes float{ 0%{transform:translateY(0)} 100%{transform:translateY(-120vh)} }
@@ -154,15 +124,10 @@
     .pop-in{ animation: pop .45s ease-out both; }
     @keyframes pop{ 0%{ transform: scale(.6); opacity:0; } 60%{ transform: scale(1.08); opacity:1; } 100%{ transform: scale(1); } }
 
-    @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* SVG container keeps 1:1 like your original */
     .cake-wrap svg{ width:100%; height:100%; display:block; }
 
-    /* Flames inside the SVG */
     .svg-flame { transform-box: fill-box; transform-origin: 50% 100%; filter: drop-shadow(0 0 6px rgba(255,180,60,.75)); }
     .svg-flame .core { animation: flicker .9s infinite; }
     .svg-flame.fl2 .core { animation-duration: 1.05s; animation-delay: .12s; }
@@ -178,7 +143,6 @@
     .extinguish { animation: fadeOut .25s ease-out forwards; }
     @keyframes fadeOut { to { opacity: 0; filter: none; } }
 
-    /* Smoke puffs over the SVG using absolute %s */
     .puff{
       position:absolute; left:var(--x); top:var(--y);
       transform: translate(-50%,-110%);
@@ -188,7 +152,6 @@
       opacity:.9; filter: blur(0.5px); pointer-events:none; animation: puff 700ms ease-out forwards; z-index: 2;
     }
     @keyframes puff{ 0%{ transform:translate(-50%,90%) scale(.8); opacity:.9; } 100%{ transform:translate(-50%,-10%) scale(1.8); opacity:0; } }
-    
   </style>
 </head>
 <body>
@@ -241,476 +204,12 @@
           class="birthday-image" role="button" tabindex="0"
           alt="Gift Box" aria-label="Open the gift" />
 
-
       <!-- Footer -->
       <div class="footer">Made with ❤️ by <span id="from">Mahra</span></div>
     </div>
   </div>
 
-  <script>
-    document.getElementById('from').textContent = 'Mahra';
-    
-    // ==== Mic helpers + gesture primer ====  // ADD THIS
-    let __audioCtx, __analyser, __data, __micSource, __rafId;
-
-    async function startMic(){
-      try{
-        __audioCtx = __audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        if (__audioCtx.state === 'suspended') { await __audioCtx.resume(); }
-
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        __micSource = __audioCtx.createMediaStreamSource(stream);
-        __analyser = __analyser || __audioCtx.createAnalyser();
-        __analyser.fftSize = 2048;
-        __data = new Uint8Array(__analyser.fftSize);
-        __micSource.connect(__analyser);
-
-        let baseline = 0.02, armed = false, aboveCount = 0, frame = 0;
-        (function tick(){
-          __analyser.getByteTimeDomainData(__data);
-          let sum = 0; for (let i=0;i<__data.length;i++){ const v=(__data[i]-128)/128; sum += v*v; }
-          const rms = Math.sqrt(sum/__data.length);
-
-          if (!armed){ baseline = Math.min(0.08, Math.max(0.015, rms * 1.5)); armed = true; }
-          const threshold = Math.max(baseline + 0.04, 0.10);
-          if (rms > threshold) aboveCount++; else aboveCount = Math.max(0, aboveCount - 2);
-
-          if (aboveCount > 10) {  // slightly easier on phones
-            if (typeof window.__extinguishCandles === 'function') window.__extinguishCandles();
-            return;
-          }
-          __rafId = requestAnimationFrame(tick);
-        })();
-      } catch(e){ console.warn('Microphone unavailable:', e); }
-    }
-
-    function stopMic(){
-      if (__rafId) cancelAnimationFrame(__rafId);
-      __rafId = null;
-      try { __micSource && __micSource.mediaStream.getTracks().forEach(t=>t.stop()); } catch {}
-      try { __audioCtx && __audioCtx.close(); } catch {}
-      __micSource = null; __analyser = null; __data = null; __audioCtx = null;
-    }
-
-    // Prime the AudioContext on the very first gesture (iOS/Chrome on iOS stricter)  // ADD THIS
-    function __primeAudioCtx(){
-      try{
-        __audioCtx = __audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        if (__audioCtx.state === 'suspended') __audioCtx.resume();
-      } catch{}
-      window.removeEventListener('pointerdown', __primeAudioCtx, {capture:true});
-      window.removeEventListener('keydown',    __primeAudioCtx, {capture:true});
-    }
-    window.addEventListener('pointerdown', __primeAudioCtx, {capture:true, once:true});
-    window.addEventListener('keydown',    __primeAudioCtx, {capture:true, once:true});
-
-    // If user backgrounds the page and returns, resume if needed                 // ADD THIS
-    document.addEventListener('visibilitychange', async ()=>{
-      if (document.visibilityState === 'visible' && __audioCtx && __audioCtx.state === 'suspended') {
-        try { await __audioCtx.resume(); } catch {}
-      }
-    });
-    // ==== end mic helpers ====
-
-
-    // Confetti
-    (function(){
-      const BASE_SPEED = 1.5, IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const SPEED = BASE_SPEED * (IS_MOBILE ? 1.6 : 1), TWO_PI = Math.PI * 2;
-      const canvas = document.getElementById('confetti'), ctx = canvas.getContext('2d');
-      let w,h,particles=[],running=false,onDoneCb=null;
-      function resize(){ w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
-      window.addEventListener('resize', resize); resize();
-      const rand=(min,max)=>Math.random()*(max-min)+min;
-      
-      function spawnFalling(n = IS_MOBILE ? 160 : 220){
-        particles.length = 0;
-        for(let i=0;i<n;i++){
-          particles.push({ 
-            x:rand(0,w), y:-10, r:rand(4,8),
-            vx:rand(-0.5,0.5)*SPEED, vy:rand(1.0,2.2)*SPEED,
-            rot:rand(0,TWO_PI), rotSpd:rand(-0.05,0.05)*SPEED,
-            col:`hsl(${Math.floor(rand(0,360))} 90% 60%)`,
-            shape: Math.random()<0.5?'rect':'circ',
-            gravity: 0.01*SPEED
-          });
-        }
-      }
-
-      function spawnBurst(x, y, n = IS_MOBILE ? 200 : 280){
-        particles.length = 0;
-        for(let i=0;i<n;i++){
-          const angle = rand(0, TWO_PI);
-          const velocity = rand(3, 8) * SPEED;
-          particles.push({ 
-            x: x, 
-            y: y, 
-            r:rand(4,8),
-            vx: Math.cos(angle) * velocity,
-            vy: Math.sin(angle) * velocity - rand(1, 3) * SPEED,
-            rot:rand(0,TWO_PI), 
-            rotSpd:rand(-0.08,0.08)*SPEED,
-            col:`hsl(${Math.floor(rand(0,360))} 90% 60%)`,
-            shape: Math.random()<0.5?'rect':'circ',
-            gravity: 0.015*SPEED
-          });
-        }
-      }
-
-      let lastTime = 0;
-      function step(now){
-        if(!running) return;
-        if(!lastTime) lastTime = now;
-        let dt = (now - lastTime) / (1000/60); dt = Math.min(dt, 3); lastTime = now;
-        ctx.clearRect(0,0,w,h); let alive=false;
-        
-        for(const p of particles){
-          p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.rotSpd*dt; p.vy += p.gravity*dt;
-          if(p.y < h + 30) alive = true;
-          ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.col;
-          if(p.shape==='rect'){ ctx.fillRect(-p.r,-p.r,p.r*2,p.r*2*0.6); }
-          else { ctx.beginPath(); ctx.arc(0,0,p.r,0,Math.PI*2); ctx.fill(); }
-          ctx.restore();
-        }
-        if(alive){ requestAnimationFrame(step); }
-        else { running=false; const cb=onDoneCb; onDoneCb=null; if(typeof cb==='function') cb(); }
-      }
-      
-      window.Confetti = {
-        burst({count,onDone} = {}){ 
-          if(running) return; 
-          running=true; 
-          onDoneCb=onDone||null; 
-          spawnFalling(count??undefined); 
-          lastTime=0; 
-          requestAnimationFrame(step); 
-        },
-        burstFrom({x, y, count, onDone} = {}){
-          if(running) return; 
-          running=true; 
-          onDoneCb=onDone||null; 
-          spawnBurst(x, y, count??undefined); 
-          lastTime=0; 
-          requestAnimationFrame(step);
-        }
-      };
-    })();
-
-    // Gift click logic
-    (function(){
-      const img = document.getElementById('giftImage');
-      const headline = document.getElementById('headline');
-      let opened = false;
-
-      function openGiftOnce(){
-        if(opened) return; opened = true;
-        startMic();
-
-        if(window.Confetti && typeof window.Confetti.burst==='function'){
-          window.Confetti.burst({
-            count: 220,
-            onDone: async () => {
-              // Create the cake container
-              const cakeContainer = document.createElement("div");
-              cakeContainer.className = "pop-in cake-wrap";
-              cakeContainer.setAttribute("aria-label","Birthday Cake");
-
-              const cakeTitle = document.createElement("h2");
-              cakeTitle.className = "cake-title";
-              cakeTitle.textContent = "Happy Birthday";
-              cakeContainer.appendChild(cakeTitle);
-
-              // Load your SVG and inline it
-              const svgText = await fetch("Cake 2 Candles.svg").then(r => r.text());
-              const holder = document.createElement("div");
-              holder.innerHTML = svgText.trim();
-              const cakeSvg = holder.querySelector("svg");
-              // Ensure proper viewBox exists (your file uses 1080×1080)
-              cakeSvg.setAttribute("viewBox", "0 0 1080 1080");
-              cakeContainer.appendChild(cakeSvg);
-
-              // Flame builder (inside the SVG)
-              function makeSvgFlame(className){
-                const ns = "http://www.w3.org/2000/svg";
-                const g = document.createElementNS(ns, "g");
-                g.setAttribute("class", `svg-flame ${className||""}`);
-
-                const defs = document.createElementNS(ns,"defs");
-                const grad = document.createElementNS(ns,"radialGradient");
-                const gid = "flg"+Math.random().toString(36).slice(2);
-                grad.setAttribute("id", gid);
-                grad.setAttribute("cx","50%"); grad.setAttribute("cy","30%"); grad.setAttribute("r","65%");
-                const s1 = document.createElementNS(ns,"stop"); s1.setAttribute("offset","0%");   s1.setAttribute("stop-color","#fff8a8");
-                const s2 = document.createElementNS(ns,"stop"); s2.setAttribute("offset","55%");  s2.setAttribute("stop-color","#ffd36b");
-                const s3 = document.createElementNS(ns,"stop"); s3.setAttribute("offset","100%"); s3.setAttribute("stop-color","#ff7a2c");
-                grad.append(s1,s2,s3); defs.appendChild(grad); g.appendChild(defs);
-
-                const outer = document.createElementNS(ns,"path");
-                outer.setAttribute("d","M0,-22 C6,-11 9,-4 9,2 C9,12 4,18 0,20 C-4,18 -9,12 -9,2 C-9,-4 -6,-11 0,-22 Z");
-                outer.setAttribute("fill", `url(#${gid})`);
-                outer.setAttribute("class","core");
-
-                const inner = document.createElementNS(ns,"path");
-                inner.setAttribute("d","M0,-14 C3,-8 4.5,-4 4.5,0 C4.5,6 2,9 0,10 C-2,9 -4.5,6 -4.5,0 C-4.5,-4 -3,-8 0,-14 Z");
-                inner.setAttribute("fill","#fff4b0"); inner.setAttribute("opacity","0.9");
-
-                g.append(outer, inner);
-                return g;
-              }
-
-              // Wick coordinates from your paths (in SVG units)
-              const left = { x: 496.00,   y: 132.72 };
-              const right= { x: 554.36,   y: 132.72 };
-
-              // Slight visual lift so the base of the flame sits on the wick tip
-              const lift = -40;  // move up a few SVG units; tweak 0..-8 if needed
-              const flameScale = 1.0; // 1.0 = default size; 0.9 smaller, 1.1 bigger
-
-              const f1 = makeSvgFlame("");
-              f1.style.transform = `translate(${left.x}px, ${left.y + lift}px) scale(${flameScale})`;
-              const f2 = makeSvgFlame("fl2");
-              f2.style.transform = `translate(${right.x}px, ${right.y + lift}px) scale(${flameScale})`;
-
-              // Add flames on top of everything; if your cake has layers, append near the end
-              cakeSvg.appendChild(f1);
-              cakeSvg.appendChild(f2);
-              
-              const micPrompt = document.createElement("div");
-              micPrompt.className = "mic-prompt";
-              micPrompt.setAttribute("aria-live","polite");
-              micPrompt.innerHTML = 'Blow into the mic to blow out the candles';
-              cakeContainer.appendChild(micPrompt);
-              
-              // Insert cake into the card
-              img.replaceWith(cakeContainer);
-              if (headline) headline.remove();
-
-              // === Blow-out logic ===
-              let blown = false;
-              function extinguish(){
-                if (blown) return; 
-                blown = true;
-                 // stop future mic triggers
-                window.__extinguishCandles = null;
-                
-              // hide the prompt once the action happens
-              if (micPrompt) { micPrompt.classList.add("hide"); setTimeout(()=>micPrompt.remove(), 240); }
-                
-
-                // CSS fade-out on SVG flames
-                f1.classList.add("extinguish");
-                f2.classList.add("extinguish");
-                setTimeout(()=>{ f1.remove(); f2.remove(); }, 420);
-
-                // Add smoke puffs
-                function puffAt(pt){
-                  const px = (pt.x / 1080) * 100;
-                  const py = (pt.y / 1080) * 100;
-                  for (let i=0;i<2;i++){
-                    const puff = document.createElement("div");
-                    puff.className = "puff";
-                    puff.style.setProperty("--x", px + "%");
-                    puff.style.setProperty("--y", py + "%");
-                    cakeContainer.appendChild(puff);
-                    setTimeout(()=>puff.remove(), 800);
-                  }
-                }
-                puffAt(left); 
-                puffAt(right);
-
-                stopMic();
-
-                // === Confetti burst ===
-                try {
-                  const rect = cakeSvg.getBoundingClientRect();
-                  const cx = rect.left + ((left.x + right.x) / 2 / 1080) * rect.width;
-                  const cy = rect.top + ((left.y - 20) / 1080) * rect.height;
-                  // Trigger the confetti burst
-                  window.Confetti.burstFrom({ x: cx, y: cy, count: 280 });
-                  // Wait just enough for the burst to finish (~1.3s) before showing the emoji
-                  setTimeout(() => {
-                  const letterEmoji = document.createElement("div");
-                  letterEmoji.className = "letter-emoji";
-                  letterEmoji.setAttribute("role", "button");
-                  letterEmoji.setAttribute("tabindex", "0");
-                  letterEmoji.setAttribute("aria-label", "Open birthday message");
-                  letterEmoji.innerHTML = 
-                  `
-                    <span class="emoji-letter" aria-label="love letter" role="img">💌</span>
-                    <span class="emoji-hand" aria-hidden="true">👈🏼</span>
-                  `;
-                  cakeContainer.appendChild(letterEmoji);
-
-                    // === Popup logic ===
-                    function showPopup() {
-                        const PAGES = [
-                          { text: "I would have gotten you a real present..." },
-                          { 
-                            text: "but unfortunately, I’m broke",
-                            img: "no_money_cat.jpg"
-                          },
-                          { text: "So you’ll have to settle for this card" },
-                          { text: "Hope it made you smile (and if it didn’t… you better start smiling now)" },
-                          { text: "I love you ❤️" }
-                        ];
-
-                        let idx = 0;
-
-                        const wrap = document.createElement("div");
-                        wrap.innerHTML = `
-                          <div style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-                                      background:rgba(0,0,0,.4); backdrop-filter:blur(3px); z-index:6;">
-                            <div role="dialog" aria-modal="true" aria-label="Birthday message"
-                                style="background:#fff; color:#0f172a; border-radius:18px; padding:22px 26px;
-                                        box-shadow:0 24px 60px rgba(0,0,0,0.55); text-align:center;
-                                        max-width:min(420px,90vw);">
-                              <h3 id="popup-header" style="font:800 20px/1.25 'Outfit',system-ui;margin:0 0 6px;">Happy Birthday My Love !!</h3>
-                              <p id="popup-body" style="font:500 16px/1.45 Inter,system-ui;margin:0;white-space:pre-line;"></p>
-
-                              <div style="display:flex; gap:8px; justify-content:center; margin-top:14px;">
-                                <button id="btn-back"
-                                        style="background:#e5e7eb; color:#0f172a; border:none; border-radius:10px;
-                                              padding:8px 14px; cursor:pointer; min-width:84px;">Back</button>
-                                <button id="btn-next"
-                                        style="background:#0f172a; color:#fff; border:none; border-radius:10px;
-                                              padding:8px 14px; cursor:pointer; min-width:84px;">Next</button>
-                                <button id="btn-close"
-                                        style="display:none; background:#0f172a; color:#fff; border:none; border-radius:10px;
-                                              padding:8px 14px; cursor:pointer; min-width:84px;">Close</button>
-                              </div>
-                            </div>
-                          </div>`;
-                        document.body.appendChild(wrap);
-
-                        const overlay = wrap.firstElementChild;
-                        const bodyEl  = overlay.querySelector("#popup-body");
-                        const header  = overlay.querySelector("#popup-header");
-                        const backBtn = overlay.querySelector("#btn-back");
-                        const nextBtn = overlay.querySelector("#btn-next");
-                        const closeBtn= overlay.querySelector("#btn-close");
-
-                        const close = () => wrap.remove();
-                        function updateView() {
-                          const current = PAGES[idx];
-                          if (typeof current === "string") {
-                            bodyEl.innerHTML = `<p>${current}</p>`;
-                          } else {
-                            let html = `<p>${current.text}</p>`;
-                            if (current.img) {
-                              html += `<img src="${current.img}" alt="${current.alt || ''}" 
-                                        style="display:block;margin:14px auto 0 auto;
-                                                max-width:220px;width:70%;border-radius:12px;">`;
-                            }
-                            bodyEl.innerHTML = html;
-                          }
-
-                          // Header only on first panel
-                          header.style.display = idx === 0 ? "block" : "none";
-
-                          // 🔹 Hide Back on first panel; show otherwise
-                          backBtn.style.display = (idx === 0) ? "none" : "inline-block";
-
-                          const isLast = idx === PAGES.length - 1;
-                          nextBtn.style.display  = isLast ? "none" : "inline-block";
-                          closeBtn.style.display = isLast ? "inline-block" : "none";
-                          (isLast ? closeBtn : nextBtn).focus();
-                        }
-
-                        backBtn.addEventListener("click", () => { if (idx > 0) { idx--; updateView(); } });
-                        nextBtn.addEventListener("click", () => { if (idx < PAGES.length - 1) { idx++; updateView(); } });
-                        closeBtn.addEventListener("click", close);
-                        overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
-
-                        function onKey(e) {
-                          if (e.key === "Escape") return close();
-                          if (e.key === "ArrowLeft" || e.key === "Backspace") {
-                            if (idx > 0) { idx--; updateView(); }
-                          } else if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
-                            const isLast = idx === PAGES.length - 1;
-                            if (isLast) close();
-                            else { idx++; updateView(); }
-                          }
-                        }
-                        document.addEventListener("keydown", onKey);
-
-                        const obs = new MutationObserver(() => {
-                          if (!document.body.contains(wrap)) {
-                            document.removeEventListener("keydown", onKey);
-                            obs.disconnect();
-                          }
-                        });
-                        obs.observe(document.body, { childList: true });
-
-                        updateView();
-                        (nextBtn.offsetParent ? nextBtn : closeBtn).focus();
-                      } // pop up logic end
-
-                    letterEmoji.addEventListener("click", showPopup);
-                    letterEmoji.addEventListener("keydown", e => {
-                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showPopup(); }
-                    });
-                  }, 1300);
-                } catch(e) {
-                  console.warn("Confetti burst error:", e);
-                }
-              }//function ends here for blowing the candles out
-
-              // Make it callable from the mic loop:
-              window.__extinguishCandles = extinguish;
-
-
-              // Click / Space / B fallback
-              cakeContainer.addEventListener("click", extinguish);
-              window.addEventListener("keydown", e => {
-                if (e.key === " " || e.key.toLowerCase() === "b") { e.preventDefault(); extinguish(); }
-              });
-
-              // Mic detection (RMS spike)
-              let audioCtx, analyser, data, micSource, rafId;
-              async function startMic(){
-                try{
-                  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-                  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                  micSource = audioCtx.createMediaStreamSource(stream);
-                  analyser = audioCtx.createAnalyser();
-                  analyser.fftSize = 2048;
-                  data = new Uint8Array(analyser.fftSize);
-                  micSource.connect(analyser);
-
-                  let baseline = 0.02, armed = false, aboveCount = 0;
-                  function tick(){
-                    analyser.getByteTimeDomainData(data);
-                    let sum = 0; for (let i=0;i<data.length;i++){ const v=(data[i]-128)/128; sum += v*v; }
-                    const rms = Math.sqrt(sum/data.length);
-                    if (!armed){ baseline = Math.min(0.08, Math.max(0.015, rms*1.5)); armed = true; }
-                    const threshold = Math.max(baseline + 0.04, 0.10);
-                    if (rms > threshold) aboveCount++; else aboveCount = Math.max(0, aboveCount-2);
-                    if (aboveCount > 12) { extinguish(); return; }
-                    rafId = requestAnimationFrame(tick);
-                  }
-                  tick();
-                } catch(e){ console.warn("Microphone unavailable:", e); }
-              }
-              function stopMic(){
-                if (rafId) cancelAnimationFrame(rafId);
-                try { micSource && micSource.mediaStream.getTracks().forEach(t=>t.stop()); } catch {}
-                try { audioCtx && audioCtx.close(); } catch {}
-                rafId = null; micSource = null; audioCtx = null;
-              }
-            }
-          });
-        }
-      }
-
-      // Fire on pointerdown so iOS treats it as the direct gesture 
-      img.addEventListener('pointerdown', openGiftOnce, { once:true });
-      // Keep keyboard access
-      img.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openGiftOnce(); }});
-
-
-      img.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openGiftOnce(); }});
-    })();
-  </script>
+  <!-- All logic moved to script.js -->
+  <script src="script.js" defer></script>
 </body>
 </html>
-
